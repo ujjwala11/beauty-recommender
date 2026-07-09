@@ -1,0 +1,53 @@
+# =========================
+# Datasets
+# =========================
+
+# Raw datasets
+data/raw/
+
+# Processed datasets
+data/processed/
+
+
+# =========================
+# Model artifacts
+# =========================
+
+# Trained models and generated artifacts
+models/**/*.pkl
+models/**/*.json
+models/**/*.csv
+
+
+# =========================
+# Streamlit generated files
+# =========================
+
+streamlit_App/data/
+streamlit_App/utils/users.json
+
+.streamlit/
+
+
+# =========================
+# Temporary files
+# =========================
+
+notebooks/temporary_booster.json
+.ipynb_checkpoints/
+
+
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.pyc
+
+
+# =========================
+# OS files
+# =========================
+
+.DS_Store
+Thumbs.db

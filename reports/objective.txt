@@ -1,0 +1,23 @@
+Project Objective
+Business Goal
+
+Develop an AI Beauty Intelligence Platform that provides:
+
+Personalized beauty product recommendations
+Explainable recommendations
+Personalized AM/PM skincare routines
+Seasonal trend analytics
+Product similarity search
+Ingredient intelligence
+ML Objectives
+
+We are solving multiple ML problems.
+
+Problem	Type	Evaluation
+Predict product rating	Regression	RMSE, MAE, R²
+Predict recommendation (Yes/No)	Classification	ROC-AUC, F1, Precision, Recall
+Review sentiment	NLP Classification	F1, Accuracy
+Recommend products	Recommendation	Precision@K, Recall@K, NDCG
+Product similarity	Information Retrieval	Precision@K
+
+Notice how each problem has its own appropriate evaluation metrics.
