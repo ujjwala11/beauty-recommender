@@ -1,7 +1,9 @@
 # AI Beauty Intelligence Platform
 
-## Explainable Hybrid Recommendation System for Personalized Beauty Discovery
+##  Hybrid Recommendation System for Personalized Beauty Discovery
 
+https://beauty-recommender-efdi3c5kqnehprnmkiuizr.streamlit.app/
+ 
 ## Overview
 
 An AI-powered beauty recommendation platform that combines **Machine Learning, NLP, Recommendation Systems, and Explainable AI** to provide personalized skincare and beauty product recommendations.
