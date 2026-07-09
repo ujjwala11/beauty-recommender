@@ -2,11 +2,11 @@
 
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 
 
 from recommender import (
     products,
-    reviews,
     recommend_hybrid
 )
 
@@ -19,24 +19,62 @@ from user_recommender import (
 
 from utils.ui_components import product_card
 
+
 from cold_start import (
     load_user_preferences,
     cold_start_recommend
 )
+
+
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-
     page_title="My Beauty Profile",
-
     page_icon="💄",
-
     layout="wide"
-
 )
+
+
+
+# ============================================================
+# LOAD REVIEWS SAFELY
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+REVIEWS_PATH = (
+    PROJECT_ROOT
+    /
+    "data"
+    /
+    "processed"
+    /
+    "recommendation"
+    /
+    "reviews_summary.csv"
+)
+
+
+
+@st.cache_data
+def load_reviews():
+
+    if REVIEWS_PATH.exists():
+
+        return pd.read_csv(
+            REVIEWS_PATH,
+            low_memory=False
+        )
+
+    return pd.DataFrame()
+
+
+
+reviews = load_reviews()
 
 
 
@@ -44,7 +82,11 @@ st.set_page_config(
 # LOGIN CHECK
 # ============================================================
 
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
+
+if (
+    "logged_in" not in st.session_state
+    or not st.session_state.logged_in
+):
 
     st.warning(
         "Please login first"
@@ -55,16 +97,12 @@ if "logged_in" not in st.session_state or not st.session_state.logged_in:
 
 
 # ============================================================
-# USER ID
+# USER
 # ============================================================
 
 
 user_id = st.session_state.get(
-
-    "user",
-
-    None
-
+    "user"
 )
 
 
@@ -79,46 +117,35 @@ if user_id is None:
 
 
 
-
-
 # ============================================================
-# COLUMN SAFETY
+# PRODUCT SAFETY
 # ============================================================
 
 
 products = products.copy()
 
-reviews = reviews.copy()
 
 
+required_defaults = {
 
-if "primary_category" not in products.columns:
+    "primary_category":"Unknown",
 
-    products["primary_category"] = "Unknown"
+    "brand_name":"Unknown",
 
+    "price_usd":0,
 
-
-if "brand_name" not in products.columns:
-
-    products["brand_name"] = "Unknown"
-
-
-
-if "price_usd" not in products.columns:
-
-    products["price_usd"] = 0
-
-
-
-if "image_url" not in products.columns:
-
-    products["image_url"] = (
-
+    "image_url":
         "https://via.placeholder.com/300"
 
-    )
+}
 
 
+
+for col,value in required_defaults.items():
+
+    if col not in products.columns:
+
+        products[col] = value
 
 
 
@@ -139,8 +166,6 @@ profile = build_user_profile(
 
 
 
-
-
 # ============================================================
 # HEADER
 # ============================================================
@@ -151,19 +176,14 @@ st.title(
 )
 
 
-
 st.write(
-
     f"Welcome back **{user_id}**"
-
 )
 
 
 
-
-
 # ============================================================
-# PROFILE CARDS
+# PROFILE METRICS
 # ============================================================
 
 
@@ -174,38 +194,28 @@ col1,col2,col3 = st.columns(3)
 with col1:
 
     st.metric(
-
         "Total Reviews",
-
-        profile["total_reviews"]
-
+        profile.get(
+            "total_reviews",
+            0
+        )
     )
-
 
 
 with col2:
 
     st.metric(
-
         "Average Spend",
-
-        f"${profile['avg_price']:.2f}"
-
+        f"${profile.get('avg_price',0):.2f}"
     )
-
 
 
 with col3:
 
     st.metric(
-
         "Average Rating",
-
-        f"{profile['avg_rating']:.1f} ⭐"
-
+        f"{profile.get('avg_rating',0):.1f} ⭐"
     )
-
-
 
 
 
@@ -217,110 +227,97 @@ with col3:
 st.divider()
 
 
-
 left,right = st.columns(2)
 
 
 
 with left:
 
-
     st.subheader(
-
         "Favourite Categories"
-
     )
 
 
-    if profile["favorite_categories"]:
+    categories = profile.get(
+        "favorite_categories",
+        []
+    )
 
 
-        for c in profile["favorite_categories"]:
+    if categories:
+
+        for c in categories:
 
             st.write(
-
                 "🧴",
-
                 c
-
             )
 
     else:
 
-        st.write(
-
+        st.info(
             "No category data yet"
-
         )
-
 
 
 
 with right:
 
-
     st.subheader(
-
         "Favourite Brands"
-
     )
 
 
-    if profile["favorite_brands"]:
+    brands = profile.get(
+        "favorite_brands",
+        []
+    )
 
 
-        for b in profile["favorite_brands"]:
+    if brands:
+
+        for b in brands:
 
             st.write(
-
                 "✨",
-
                 b
-
             )
 
     else:
 
-        st.write(
-
+        st.info(
             "No brand data yet"
-
         )
 
 
 
-
-
 # ============================================================
-# USER HISTORY
+# HISTORY
 # ============================================================
 
 
 st.divider()
 
 
-
 st.subheader(
-
     "Recently Interacted Products"
-
 )
 
 
 
-if profile["liked_products"]:
+liked = profile.get(
+    "liked_products",
+    []
+)
 
 
-    history_df = pd.DataFrame(
 
-        profile["liked_products"]
-
-    )
+if liked:
 
 
     st.dataframe(
 
-        history_df,
+        pd.DataFrame(liked),
 
         use_container_width=True
 
@@ -329,19 +326,14 @@ if profile["liked_products"]:
 
 else:
 
-
     st.info(
-
         "No previous products found"
-
     )
 
 
 
-
-
 # ============================================================
-# PERSONALIZED RECOMMENDATIONS
+# RECOMMENDATIONS
 # ============================================================
 
 
@@ -359,7 +351,11 @@ if st.button(
 ):
 
 
-    if profile["total_reviews"] > 0:
+    if profile.get(
+        "total_reviews",
+        0
+    ) > 0:
+
 
 
         recommendations = recommend_for_user(
@@ -403,86 +399,23 @@ if st.button(
 
 
 
+# ============================================================
+# DISPLAY
+# ============================================================
 
 
 if "profile_results" in st.session_state:
 
 
-    results = st.session_state.profile_results.copy()
+    results = (
 
-
-
-    sort = st.selectbox(
-
-        "Sort",
-
-        [
-
-            "AI Ranking",
-
-            "Price Low → High",
-
-            "Price High → Low"
-
-        ]
+        st.session_state.profile_results.copy()
 
     )
 
 
-
-    if sort=="Price Low → High":
-
-        results = results.sort_values(
-
-            "price_usd"
-
-        )
-
-
-
-    elif sort=="Price High → Low":
-
-        results = results.sort_values(
-
-            "price_usd",
-
-            ascending=False
-
-        )
-
-
-
-
-    for _,row in results.iterrows():
-
-        product_card(row)
-
-
-
-
-# ============================================================
-# DISPLAY RESULTS
-# ============================================================
-
-
-
-if (
-
-    "profile_recommendations"
-
-    in st.session_state
-
-):
-
-
-    results = st.session_state.profile_recommendations.copy()
-
-
-
     st.subheader(
-
         "AI Picks"
-
     )
 
 
@@ -532,7 +465,6 @@ if (
         )
 
 
-
     else:
 
 
@@ -564,9 +496,6 @@ if (
 
 
 
-
-
     for _,row in results.iterrows():
-
 
         product_card(row)

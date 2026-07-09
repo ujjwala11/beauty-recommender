@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 
 
 from recommender import (
     products,
-    reviews,
     recommend_hybrid
 )
-from utils.tracking import add_event
 
+from utils.tracking import add_event
 from utils.ui_components import product_card
 
 
@@ -26,17 +26,52 @@ st.set_page_config(
 
 
 # ============================================================
-# CHECK SELECTED PRODUCT
+# OPTIONAL REVIEWS LOADER
 # ============================================================
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+REVIEWS_PATH = (
+    PROJECT_ROOT
+    /
+    "data"
+    /
+    "processed"
+    /
+    "recommendation"
+    /
+    "reviews_summary.csv"
+)
+
+
+@st.cache_data
+def load_reviews():
+
+    if REVIEWS_PATH.exists():
+
+        return pd.read_csv(
+            REVIEWS_PATH,
+            low_memory=False
+        )
+
+    return pd.DataFrame()
+
+
+
+reviews = load_reviews()
+
+
+
+# ============================================================
+# CHECK PRODUCT
+# ============================================================
 
 if "selected_product" not in st.session_state:
-
 
     st.warning(
         "No product selected"
     )
-
 
     st.stop()
 
@@ -45,11 +80,16 @@ if "selected_product" not in st.session_state:
 product_id = st.session_state.selected_product
 
 
-add_event(
-    st.session_state.user,
-    product_id,
-    "view"
-)
+
+if "user" in st.session_state:
+
+    add_event(
+        st.session_state.user,
+        product_id,
+        "view"
+    )
+
+
 
 # ============================================================
 # GET PRODUCT
@@ -57,24 +97,15 @@ add_event(
 
 
 product_data = products[
-
-    products["product_id"]
-
-    ==
-
-    product_id
-
+    products["product_id"] == product_id
 ]
-
 
 
 if product_data.empty:
 
-
     st.error(
         "Product not found"
     )
-
 
     st.stop()
 
@@ -84,10 +115,8 @@ product = product_data.iloc[0]
 
 
 
-
-
 # ============================================================
-# PRODUCT DETAILS
+# PRODUCT HEADER
 # ============================================================
 
 
@@ -101,23 +130,22 @@ with col1:
 
 
     image = product.get(
-
         "image_url",
-
-        "https://via.placeholder.com/300"
-
+        ""
     )
+
+
+    if not image:
+
+        image = (
+            "https://via.placeholder.com/300"
+        )
 
 
     st.image(
-
         image,
-
         width=300
-
     )
-
-
 
 
 
@@ -125,66 +153,46 @@ with col2:
 
 
     st.title(
-
         product.get(
-
             "product_name",
-
-            "Unknown"
-
+            "Unknown Product"
         )
-
     )
 
 
     st.subheader(
 
         product.get(
-
             "brand_name",
-
-            ""
-
+            "Unknown Brand"
         )
 
     )
 
 
     st.write(
-
         f"🧴 Category: {product.get('primary_category','Beauty')}"
+    )
 
+
+    price = product.get(
+        "price_usd",
+        0
     )
 
 
     st.write(
-
-        f"💵 Price: ${float(product.get('price_usd',0)):.2f}"
-
+        f"💵 Price: ${float(price):.2f}"
     )
-
-
-
-    if "rating" in product.index:
-
-
-        st.write(
-
-            f"⭐ Rating: {product['rating']}"
-
-        )
-
-
 
 
 
 # ============================================================
-# PRODUCT INFORMATION
+# DESCRIPTION
 # ============================================================
 
 
 st.divider()
-
 
 
 st.subheader(
@@ -192,24 +200,20 @@ st.subheader(
 )
 
 
-
 description = product.get(
-
     "description",
-
     "Premium beauty product designed for everyday care."
-
 )
 
 
+if pd.isna(description):
 
-st.write(
-
-    description
-
-)
+    description = (
+        "Premium beauty product designed for everyday care."
+    )
 
 
+st.write(description)
 
 
 
@@ -219,54 +223,31 @@ st.write(
 
 
 st.subheader(
-
     "🧪 Ingredients"
-
 )
-
 
 
 ingredients = product.get(
-
     "ingredients",
-
     None
-
 )
 
 
 
-if pd.isna(ingredients) or ingredients is None:
-
+if ingredients is None or pd.isna(ingredients):
 
     st.write(
-
         "Ingredients information unavailable"
-
     )
 
 
 else:
 
-
-    ingredient_list = str(
-
-        ingredients
-
-    ).split(",")
-
-
-
-    for ing in ingredient_list[:10]:
-
+    for ing in str(ingredients).split(",")[:10]:
 
         st.write(
-
             f"🟢 {ing.strip()}"
-
         )
-
-
 
 
 
@@ -278,35 +259,25 @@ else:
 st.divider()
 
 
-
 st.subheader(
-
     "🤖 AI Recommendation Explanation"
-
 )
-
 
 
 st.info(
-
 """
-This product was analyzed using:
+This product recommendation uses:
 
 ✓ Content similarity  
-✓ User preference patterns  
-✓ Product popularity signals  
+✓ Collaborative filtering  
+✓ Popularity signals  
 
-The recommendation engine considers:
-- Product category
+The AI considers:
 - Product characteristics
-- User behaviour
-- Similar customer interactions
-
+- Customer behaviour
+- Similar product interactions
 """
-
 )
-
-
 
 
 
@@ -318,58 +289,40 @@ The recommendation engine considers:
 st.divider()
 
 
-
 st.subheader(
-
     "✨ Similar Products"
-
 )
 
 
 
 try:
 
-
     similar = recommend_hybrid(
-
         product_id,
-
         top_n=6
-
     )
 
 
     if similar.empty:
 
-
         st.write(
-
             "No similar products found"
-
         )
 
 
     else:
 
-
-        for _,row in similar.iterrows():
-
+        for _, row in similar.iterrows():
 
             product_card(row)
 
 
 
-
 except Exception as e:
 
-
     st.error(
-
         f"Recommendation error: {e}"
-
     )
-
-
 
 
 
@@ -381,94 +334,71 @@ except Exception as e:
 st.divider()
 
 
-
 st.subheader(
-
     "💬 Customer Reviews"
-
 )
 
 
 
-product_reviews = reviews[
-
-    reviews["product_id"]
-
-    ==
-
-    product_id
-
-]
-
-
-
-if product_reviews.empty:
+if reviews.empty:
 
 
     st.write(
-
-        "No reviews available"
-
+        "Reviews unavailable"
     )
 
 
 else:
 
 
-    for _,review in product_reviews.head(5).iterrows():
+    product_reviews = reviews[
+        reviews["product_id"]
+        ==
+        product_id
+    ]
 
 
-        rating = review.get(
 
-            "rating",
-
-            ""
-
-        )
-
-
-        text = review.get(
-
-            "review_text",
-
-            ""
-
-        )
+    if product_reviews.empty:
 
 
         st.write(
-
-            f"⭐ {rating}/5"
-
+            "No reviews available"
         )
 
 
-        st.write(
-
-            text
-
-        )
+    else:
 
 
-        st.divider()
+        for _,review in product_reviews.head(5).iterrows():
 
+
+            st.write(
+                f"⭐ {review.get('rating','')}/5"
+            )
+
+
+            st.write(
+                review.get(
+                    "review_text",
+                    ""
+                )
+            )
+
+
+            st.divider()
 
 
 
 # ============================================================
-# BACK BUTTON
+# BACK
 # ============================================================
 
 
 if st.button(
-
     "⬅ Back to Store"
-
 ):
 
-
     st.switch_page(
-
         "app.py"
-
     )

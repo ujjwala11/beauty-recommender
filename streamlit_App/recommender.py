@@ -3,11 +3,14 @@
 # Beauty AI Recommendation Engine
 # ============================================================
 
-import pandas as pd
-import numpy as np
-import joblib
-
+import streamlit as st
 from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 # ============================================================
@@ -16,264 +19,167 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+DATA_DIR = PROJECT_ROOT / "data" / "processed" / "recommendation"
 
-MODEL_DIR = (
-    PROJECT_ROOT
-    / "models"
-    / "recommendation"
-)
-
-
-DATA_DIR = (
-    PROJECT_ROOT
-    / "data"
-    / "processed"
-    / "recommendation"
-)
+MODEL_DIR = PROJECT_ROOT / "models" / "recommendation"
 
 
 
 # ============================================================
-# LOAD DATA
+# LOAD HELPERS
 # ============================================================
 
 
-products = pd.read_csv(
-    DATA_DIR / "products_processed_popularity.csv",
-    low_memory=False
-)
+def load_csv(path):
 
+    if not path.exists():
+        raise FileNotFoundError(path)
 
-
-# ============================================================
-# LOAD REVIEWS SAFELY
-# ============================================================
-
-
-reviews_files = list(
-    DATA_DIR.glob("*reviews*csv")
-)
-
-
-if len(reviews_files) > 0:
-
-
-    reviews = pd.read_csv(
-
-        reviews_files[0],
-
+    return pd.read_csv(
+        path,
         low_memory=False
-
-    )
-
-
-else:
-
-
-    raise FileNotFoundError(
-
-        "No reviews csv found inside recommendation folder"
-
     )
 
 
 
-# ============================================================
-# PRODUCT COLUMN NORMALIZATION
-# ============================================================
+def load_model(path):
 
+    if not path.exists():
+        raise FileNotFoundError(path)
 
-def add_column(
-        df,
-        column,
-        default
-):
-
-    if column not in df.columns:
-
-        df[column] = default
+    return joblib.load(path)
 
 
 
-add_column(
-    products,
-    "product_name",
-    "Unknown Product"
-)
+def ensure_column(df,col,value):
 
-
-add_column(
-    products,
-    "brand_name",
-    "Unknown Brand"
-)
-
-
-add_column(
-    products,
-    "primary_category",
-    "Beauty"
-)
-
-
-add_column(
-    products,
-    "price_usd",
-    0
-)
-
-
-add_column(
-    products,
-    "image_url",
-    "https://via.placeholder.com/300"
-)
-
-
-
-# popularity
-
-
-if "popularity_norm" not in products.columns:
-
-
-    if "popularity_score" in products.columns:
-
-
-        max_value = (
-            products["popularity_score"]
-            .max()
-        )
-
-
-        products["popularity_norm"] = (
-
-            products["popularity_score"]
-
-            /
-
-            max_value
-
-        )
-
-
-    else:
-
-        products["popularity_norm"] = 0
-
-
+    if col not in df.columns:
+        df[col]=value
 
 
 
 # ============================================================
-# LOAD CONTENT MODEL
+# LOAD ENGINE
 # ============================================================
 
 
-content_similarity = joblib.load(
-
-    MODEL_DIR /
-    "content_based/cosine_similarity.pkl"
-
+@st.cache_resource(
+    show_spinner="Loading AI recommendation engine..."
 )
+def load_recommender():
+
+
+    products = load_csv(
+        DATA_DIR /
+        "products_processed_popularity.csv"
+    )
+
+
+    # safety
+
+    ensure_column(
+        products,
+        "product_name",
+        "Unknown Product"
+    )
+
+    ensure_column(
+        products,
+        "brand_name",
+        "Unknown Brand"
+    )
+
+
+    ensure_column(
+        products,
+        "primary_category",
+        "Beauty"
+    )
+
+
+    ensure_column(
+        products,
+        "price_usd",
+        0
+    )
+
+
+    ensure_column(
+        products,
+        "image_url",
+        ""
+    )
 
 
 
-content_products = joblib.load(
-
-    MODEL_DIR /
-    "content_based/product_indices.pkl"
-
-)
+    if "popularity_norm" not in products:
 
 
+        if "popularity_score" in products:
 
+            mx = products["popularity_score"].max()
 
-# ============================================================
-# LOAD COLLAB MODEL
-# ============================================================
+            products["popularity_norm"] = (
+                products["popularity_score"]/mx
+                if mx>0 else 0
+            )
 
+        else:
 
-item_knn = joblib.load(
-
-    MODEL_DIR /
-    "collab/item_knn.pkl"
-
-)
+            products["popularity_norm"]=0
 
 
 
-item_user_matrix = joblib.load(
 
-    MODEL_DIR /
-    "collab/item_user_matrix.pkl"
-
-)
+    # CONTENT MODEL
 
 
+    tfidf_matrix = load_model(
 
-cf_products = pd.read_csv(
-
-    MODEL_DIR /
-    "collab/product_map.csv"
-
-)
-
-
-
-# attach missing metadata
-
-cf_products = cf_products.merge(
-
-    products[
-        [
-            "product_id",
-            "price_usd",
-            "image_url",
-            "primary_category",
-            "brand_name"
-        ]
-    ],
-
-    on="product_id",
-
-    how="left"
-
-)
-
-
-
-cf_product_to_idx = dict(
-
-    zip(
-
-        cf_products["product_id"],
-
-        cf_products["product_idx"]
+        MODEL_DIR /
+        "content_based/tfidf_matrix.pkl"
 
     )
 
-)
+
+    product_indices = load_model(
+
+        MODEL_DIR /
+        "content_based/product_indices.pkl"
+
+    )
 
 
 
+    # COLLAB MODEL
 
 
-# ============================================================
-# HELPER
-# ============================================================
+    item_knn = load_model(
+
+        MODEL_DIR /
+        "collab/item_knn.pkl"
+
+    )
 
 
-def attach_product_details(df):
+    item_user_matrix = load_model(
+
+        MODEL_DIR /
+        "collab/item_user_matrix.pkl"
+
+    )
 
 
-    if df.empty:
+    product_map = load_csv(
 
-        return df
+        MODEL_DIR /
+        "collab/product_map.csv"
+
+    )
 
 
 
-    result = df.merge(
+    product_map = product_map.merge(
 
         products[
             [
@@ -293,113 +199,200 @@ def attach_product_details(df):
     )
 
 
-    return result
 
+    product_to_idx = dict(
 
-
-
-
-# ============================================================
-# CONTENT BASED
-# ============================================================
-
-
-def recommend_content(
-        product_id,
-        top_n=10
-):
-
-
-    match = content_products[
-
-        content_products["product_id"]
-        ==
-        product_id
-
-    ]
-
-
-
-    if match.empty:
-
-
-        return popularity_fallback(
-            top_n
+        zip(
+            product_map.product_id,
+            product_map.product_idx
         )
 
+    )
 
 
-    product_idx = int(
+    return (
 
-        match.iloc[0]["product_idx"]
+        products,
+        tfidf_matrix,
+        product_indices,
+        item_knn,
+        item_user_matrix,
+        product_map,
+        product_to_idx
 
     )
 
 
 
-    scores = content_similarity[
+(
+products,
+tfidf_matrix,
+product_indices,
+item_knn,
+item_user_matrix,
+product_map,
+product_to_idx
 
-        product_idx
+)=load_recommender()
 
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+
+def popularity_fallback(top_n):
+
+    return (
+
+        products
+        .sort_values(
+            "popularity_norm",
+            ascending=False
+        )
+        .head(top_n)
+        .copy()
+
+    )
+
+
+
+
+def attach_details(df):
+
+
+    if df.empty:
+        return df
+
+
+    cols=[
+        "product_id",
+        "product_name",
+        "brand_name",
+        "primary_category",
+        "price_usd",
+        "image_url"
     ]
 
 
+    missing=[
+        c for c in cols
+        if c not in df.columns
+    ]
 
-    indexes = np.argsort(
 
-        scores
+    if missing:
 
+        df=df.merge(
+
+            products[cols],
+
+            on="product_id",
+
+            how="left"
+
+        )
+
+
+    return df
+
+# ============================================================
+# CONTENT BASED RECOMMENDATION
+# ============================================================
+
+
+def recommend_content(product_id, top_n=10):
+
+
+    if product_id not in product_indices["product_id"].values:
+
+        return pd.DataFrame(
+            columns=[
+                "product_id",
+                "content_score"
+            ]
+        )
+
+
+
+    idx = int(
+
+        product_indices.loc[
+            product_indices["product_id"] == product_id,
+            "product_idx"
+        ].iloc[0]
+
+    )
+
+
+
+    if idx >= tfidf_matrix.shape[0]:
+
+        return pd.DataFrame(
+            columns=[
+                "product_id",
+                "content_score"
+            ]
+        )
+
+
+
+    similarity = cosine_similarity(
+
+        tfidf_matrix[idx],
+
+        tfidf_matrix
+
+    )[0]
+
+
+
+    ranked = np.argsort(
+        similarity
     )[::-1]
 
 
 
-    output=[]
+    recommendations=[]
 
 
+    for i in ranked:
 
-    for idx in indexes:
 
+        # remove same product
 
-        if idx == product_idx:
-
+        if i == idx:
             continue
 
 
 
-        output.append(
+        recommendations.append(
 
             {
-
                 "product_id":
-
-                content_products.iloc[idx]["product_id"],
-
+                    product_indices.iloc[i]["product_id"],
 
                 "content_score":
-
-                float(
-                    scores[idx]
-                )
+                    float(similarity[i])
 
             }
 
         )
 
 
-        if len(output)==top_n:
+        if len(recommendations)>=top_n:
 
             break
 
 
 
-    result = pd.DataFrame(
-        output
+    result=pd.DataFrame(
+        recommendations
     )
 
 
-    return attach_product_details(
-        result
-    )
+    return attach_details(result)
 
 
 
@@ -410,30 +403,53 @@ def recommend_content(
 # ============================================================
 
 
-def recommend_collaborative(
-        product_id,
-        top_n=10
-):
+
+def recommend_collaborative(product_id, top_n=10):
 
 
-    if product_id not in cf_product_to_idx:
+    if product_id not in product_to_idx:
 
 
-        return popularity_fallback(
-            top_n
+        return pd.DataFrame(
+            columns=[
+                "product_id",
+                "collab_score"
+            ]
         )
 
 
 
-    idx = cf_product_to_idx[product_id]
+    idx = product_to_idx[product_id]
 
 
 
-    distances, indices = item_knn.kneighbors(
+    if idx >= item_user_matrix.shape[0]:
+
+
+        return pd.DataFrame(
+            columns=[
+                "product_id",
+                "collab_score"
+            ]
+        )
+
+
+
+    neighbors = min(
+
+        top_n + 1,
+
+        item_user_matrix.shape[0]
+
+    )
+
+
+
+    distances,indices = item_knn.kneighbors(
 
         item_user_matrix[idx],
 
-        n_neighbors=top_n+1
+        n_neighbors=neighbors
 
     )
 
@@ -443,7 +459,7 @@ def recommend_collaborative(
 
 
 
-    for distance, neighbour in zip(
+    for distance,neighbor in zip(
 
         distances[0][1:],
 
@@ -452,20 +468,34 @@ def recommend_collaborative(
     ):
 
 
+        match = product_map[
+
+            product_map["product_idx"]
+
+            ==
+
+            neighbor
+
+        ]
+
+
+
+        if match.empty:
+
+            continue
+
+
+
         output.append(
 
             {
 
-                "product_idx":
-
-                neighbour,
+                "product_id":
+                    match.iloc[0]["product_id"],
 
 
                 "collab_score":
-
-                float(
-                    1-distance
-                )
+                    float(1-distance)
 
             }
 
@@ -473,113 +503,88 @@ def recommend_collaborative(
 
 
 
-    result = pd.DataFrame(
-        output
-    )
+    result=pd.DataFrame(output)
 
 
 
-    result = result.merge(
-
-        cf_products,
-
-        on="product_idx",
-
-        how="left"
-
-    )
-
-
-
-    return result.sort_values(
-
-        "collab_score",
-
-        ascending=False
-
-    ).head(top_n)
-
-
+    return attach_details(result)
 
 
 
 
 
 # ============================================================
-# HYBRID
+# HYBRID ENGINE
 # ============================================================
 
 
 def recommend_hybrid(
+
         product_id,
-        top_n=10
+
+        top_n=10,
+
+        content_weight=0.5,
+
+        collab_weight=0.3,
+
+        popularity_weight=0.2
+
 ):
 
 
     content = recommend_content(
+
         product_id,
-        top_n * 3
+
+        top_n*3
+
     )
 
 
     collab = recommend_collaborative(
+
         product_id,
-        top_n * 3
+
+        top_n*3
+
     )
 
 
-    # -----------------------------
-    # Extract scores safely
-    # -----------------------------
 
-    if not content.empty and "content_score" in content.columns:
+    # ensure columns exist
 
-        content_scores = content[
-            [
-                "product_id",
-                "content_score"
-            ]
-        ]
 
-    else:
+    if content.empty:
 
-        content_scores = pd.DataFrame(
+        content = pd.DataFrame(
+
             columns=[
                 "product_id",
                 "content_score"
             ]
+
         )
 
 
 
-    if not collab.empty and "collab_score" in collab.columns:
+    if collab.empty:
 
-        collab_scores = collab[
-            [
-                "product_id",
-                "collab_score"
-            ]
-        ]
+        collab = pd.DataFrame(
 
-    else:
-
-        collab_scores = pd.DataFrame(
             columns=[
                 "product_id",
                 "collab_score"
             ]
+
         )
 
 
 
-    # -----------------------------
-    # Merge
-    # -----------------------------
 
+    hybrid = content.merge(
 
-    hybrid = content_scores.merge(
-
-        collab_scores,
+        collab,
 
         on="product_id",
 
@@ -589,58 +594,23 @@ def recommend_hybrid(
 
 
 
-    # -----------------------------
-    # Ensure columns exist
-    # -----------------------------
+    if hybrid.empty:
 
 
-    if "content_score" not in hybrid.columns:
-
-        hybrid["content_score"] = 0
+        fallback = popularity_fallback(top_n)
 
 
-
-    if "collab_score" not in hybrid.columns:
-
-        hybrid["collab_score"] = 0
-
-
-
-    hybrid["content_score"] = (
-
-        pd.to_numeric(
-
-            hybrid["content_score"],
-
-            errors="coerce"
-
+        fallback["final_score"]=(
+            fallback["popularity_norm"]
         )
 
-        .fillna(0)
 
-    )
-
+        fallback["reason"]="Popular products"
 
 
-    hybrid["collab_score"] = (
-
-        pd.to_numeric(
-
-            hybrid["collab_score"],
-
-            errors="coerce"
-
-        )
-
-        .fillna(0)
-
-    )
+        return fallback
 
 
-
-    # -----------------------------
-    # Add popularity
-    # -----------------------------
 
 
     hybrid = hybrid.merge(
@@ -660,7 +630,40 @@ def recommend_hybrid(
 
 
 
-    hybrid["popularity_norm"] = (
+
+    hybrid["content_score"] = (
+
+        pd.to_numeric(
+
+            hybrid["content_score"],
+
+            errors="coerce"
+
+        )
+
+        .fillna(0)
+
+    )
+
+
+
+    hybrid["collab_score"]=(
+
+        pd.to_numeric(
+
+            hybrid["collab_score"],
+
+            errors="coerce"
+
+        )
+
+        .fillna(0)
+
+    )
+
+
+
+    hybrid["popularity_norm"]=(
 
         pd.to_numeric(
 
@@ -676,103 +679,102 @@ def recommend_hybrid(
 
 
 
-    # -----------------------------
-    # Final score
-    # -----------------------------
+    # normalize
 
 
-    hybrid["final_score"] = (
+    for col in [
 
-        0.5 *
+        "content_score",
+
+        "collab_score",
+
+        "popularity_norm"
+
+    ]:
+
+
+        maximum=hybrid[col].max()
+
+
+        if maximum>0:
+
+            hybrid[col]=hybrid[col]/maximum
+
+
+
+
+    hybrid["final_score"]=(
+
+
+        content_weight *
         hybrid["content_score"]
 
+
         +
 
-        0.3 *
+        collab_weight *
         hybrid["collab_score"]
 
+
         +
 
-        0.2 *
+        popularity_weight *
         hybrid["popularity_norm"]
 
     )
 
 
 
-    # -----------------------------
-    # Product details
-    # -----------------------------
+    hybrid["reason"]=np.where(
 
+        hybrid["content_score"]
 
-    hybrid = hybrid.merge(
-
-        products[
-            [
-                "product_id",
-                "product_name",
-                "brand_name",
-                "primary_category",
-                "price_usd",
-                "image_url"
-            ]
-        ],
-
-        on="product_id",
-
-        how="left"
-
-    )
-
-
-
-    hybrid["reason"] = np.where(
-
-        hybrid["content_score"] >
+        >=
 
         hybrid["collab_score"],
 
 
-        "Similar beauty profile",
+        "Similar products",
 
-        "Loved by similar users"
+
+        "Users also liked"
 
     )
 
 
 
-    return hybrid.sort_values(
-
-        "final_score",
-
-        ascending=False
-
-    ).head(top_n)
+    hybrid = attach_details(hybrid)
 
 
 
-# ============================================================
-# COLD START
-# ============================================================
+    return (
+
+        hybrid
+
+        .sort_values(
+
+            "final_score",
+
+            ascending=False
+
+        )
+
+        .drop_duplicates(
+
+            "product_id"
+
+        )
+
+        .head(top_n)
+
+        .reset_index(drop=True)
+
+    )
 
 
-def popularity_fallback(
-        top_n=10
-):
-
-
-    return products.sort_values(
-
-        "popularity_norm",
-
-        ascending=False
-
-    ).head(top_n)
 
 
 
-
-
-# backwards compatibility
+# backward compatibility
 
 hybrid_recommend = recommend_hybrid

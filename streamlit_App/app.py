@@ -12,7 +12,8 @@ from recommender import (
     products,
     recommend_content,
     recommend_collaborative,
-    recommend_hybrid
+    recommend_hybrid,
+    popularity_fallback,
 )
 
 
@@ -374,14 +375,13 @@ else:
 
 
     product_names = (
-
-        products["product_name"]
-
-        .dropna()
-
-        .unique()
-
-    )
+    products["product_name"]
+    .dropna()
+    .astype(str)
+    .drop_duplicates()
+    .sort_values()
+    .tolist()
+)
 
 
 
@@ -395,22 +395,10 @@ else:
 
 
 
-    selected_id = (
-
-        products[
-
-            products["product_name"]
-
-            ==
-            selected_name
-
-        ]
-
-        ["product_id"]
-
-        .iloc[0]
-
-    )
+    selected_id = products.loc[
+    products["product_name"] == selected_name,
+    "product_id",
+    ].iat[0]
 
 
 
@@ -446,79 +434,63 @@ else:
 
     )
 
+    if st.button("🚀 Generate"):
 
 
-
-    if st.button(
-
-        "🚀 Generate"
-
-    ):
+     with st.spinner("AI is finding recommendations..."):
 
 
         try:
 
 
-            if model=="Hybrid":
+            if model == "Hybrid":
 
-
-                results=recommend_hybrid(
-
+                results = recommend_hybrid(
                     selected_id,
-
                     top_n
-
                 )
 
 
-            elif model=="Content Based":
+            elif model == "Content Based":
 
-
-                results=recommend_content(
-
+                results = recommend_content(
                     selected_id,
-
                     top_n
-
                 )
 
 
             else:
 
-
-                results=recommend_collaborative(
-
+                results = recommend_collaborative(
                     selected_id,
-
                     top_n
-
                 )
 
+
+            st.write("DEBUG OUTPUT")
+            st.write(results.head())
 
 
             if results.empty:
 
-
                 st.warning(
-
-                    "No recommendations found. Showing popular products."
-
+                    "No AI recommendations found"
                 )
 
-                results=products.head(top_n)
+            else:
+
+                st.success(
+                    f"{len(results)} recommendations generated"
+                )
 
 
-
-            st.session_state.results=results
-
+            st.session_state.results = results
 
 
         except Exception as e:
 
-
-            st.error(
-                str(e)
-            )
+            st.exception(e)
+    
 
 
 

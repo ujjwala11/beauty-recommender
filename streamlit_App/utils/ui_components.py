@@ -1,83 +1,128 @@
 import streamlit as st
+import pandas as pd
+
+
+# ============================================================
+# PRODUCT CARD COMPONENT
+# ============================================================
+
+
+def safe_value(value, default):
+    """
+    Handle None, NaN, empty strings safely.
+    """
+
+    if value is None:
+        return default
+
+    if isinstance(value, float) and pd.isna(value):
+        return default
+
+    if str(value).strip() == "":
+        return default
+
+    if str(value).lower() == "nan":
+        return default
+
+    return value
 
 
 
 def product_card(row):
 
 
-    # ==============================
+    # ========================================================
     # SAFE VALUES
-    # ==============================
+    # ========================================================
 
 
-    product_id = row.get(
-        "product_id",
-        ""
+    product_id = safe_value(
+        row.get("product_id"),
+        "unknown"
     )
 
 
-    product_name = row.get(
-        "product_name",
+    product_name = safe_value(
+        row.get("product_name"),
         "Unknown Product"
     )
 
 
-    brand = row.get(
-        "brand_name",
+    brand = safe_value(
+        row.get("brand_name"),
         "Unknown Brand"
     )
 
 
-    category = row.get(
-        "primary_category",
+    category = safe_value(
+        row.get("primary_category"),
         "Beauty"
     )
 
 
-    price = row.get(
-        "price_usd",
+    price = safe_value(
+        row.get("price_usd"),
         0
     )
 
 
-    image = row.get(
-        "image_url",
-        "https://via.placeholder.com/300"
+    image = safe_value(
+        row.get("image_url"),
+        "https://via.placeholder.com/300x300?text=No+Image"
     )
 
 
 
-    # ==============================
-    # CARD
-    # ==============================
+    # ========================================================
+    # CARD LAYOUT
+    # ========================================================
 
 
     col1, col2 = st.columns(
-        [1,2]
+        [1, 2]
     )
 
+
+
+    # ========================================================
+    # IMAGE
+    # ========================================================
 
 
     with col1:
 
 
-        st.image(
-            image,
-            width=180
-        )
+        try:
 
+            st.image(
+                image,
+                width=180
+            )
+
+        except Exception:
+
+            st.image(
+                "https://via.placeholder.com/300x300?text=No+Image",
+                width=180
+            )
+
+
+
+    # ========================================================
+    # DETAILS
+    # ========================================================
 
 
     with col2:
 
 
         st.subheader(
-            product_name
+            str(product_name)
         )
 
 
         st.caption(
-            brand
+            str(brand)
         )
 
 
@@ -86,44 +131,63 @@ def product_card(row):
         )
 
 
+        try:
+
+            price = float(price)
+
+        except:
+
+            price = 0.0
+
+
         st.write(
-            f"💵 ${float(price):.2f}"
+            f"💵 ${price:.2f}"
         )
 
 
 
-        # ==========================
+        # ====================================================
         # AI SCORE
-        # ==========================
+        # ====================================================
 
 
         score = None
 
 
-        for col in [
+        score_columns = [
 
             "final_score",
+
             "content_score",
+
             "collab_score",
+
             "personal_score",
+
             "cold_start_score"
 
-        ]:
+        ]
+
+
+        for col in score_columns:
 
 
             if col in row.index:
 
 
-                score = row[col]
+                try:
 
-                break
+                    score = float(row[col])
+
+                    break
+
+                except:
+
+                    pass
 
 
 
         if score is not None:
-
-
-            score = float(score)
 
 
             score = max(
@@ -141,25 +205,27 @@ def product_card(row):
 
 
             st.write(
-
                 f"🤖 AI Match: {score*100:.1f}%"
-
             )
 
 
 
-        # ==========================
-        # EXPLANATION
-        # ==========================
+        # ====================================================
+        # REASON
+        # ====================================================
 
 
-        if "reason" in row.index:
+        reason = row.get(
+            "reason",
+            None
+        )
+
+
+        if reason and not pd.isna(reason):
 
 
             st.info(
-
-                f"✨ {row['reason']}"
-
+                f"✨ {reason}"
             )
 
 
@@ -178,9 +244,9 @@ def product_card(row):
 
 
 
-        # ==========================
+        # ====================================================
         # PRODUCT DETAIL BUTTON
-        # ==========================
+        # ====================================================
 
 
         if st.button(
@@ -195,11 +261,18 @@ def product_card(row):
             st.session_state.selected_product = product_id
 
 
-            st.switch_page(
+            try:
 
-                "pages/product_detail.py"
+                st.switch_page(
+                    "pages/product_detail.py"
+                )
 
-            )
+            except Exception:
+
+
+                st.warning(
+                    "Product details page unavailable."
+                )
 
 
 
